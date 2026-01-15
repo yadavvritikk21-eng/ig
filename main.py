@@ -11,10 +11,10 @@ app.secret_key = "sujal_hawk_final_2025"
 # Global
 status = {"running": False, "sent": 0, "threads": 0, "logs": [], "text": "Ready"}
 cfg = {
-    "mode": "username",
-    "username": "", "password": "", "sessionid": "",
+    "mode": "session",
+    "sessionid1": "", "sessionid2": "",
     "thread_id": "", "messages": "", "delay": 12,
-    "cycle": 35, "break": 40, "threads": 3
+    "cycle": 35, "break": 40, "threads": 2  # Fixed to 2 threads for 2 sessions
 }
 
 clients = []
@@ -47,7 +47,7 @@ def send_message(client, thread_id, message):
     log("Message send failed after 3 retries")
     return False
 
-def bomber(cl, tid, msgs):
+def bomber(cl, tid, msgs, session_num):
     local_sent = 0
     while status["running"]:
         try:
@@ -55,10 +55,10 @@ def bomber(cl, tid, msgs):
             if send_message(cl, tid, msg):
                 local_sent += 1
                 status["sent"] += 1
-                log(f"Sent #{status['sent']} → {msg[:50]}")
+                log(f"Session{session_num} → Sent #{status['sent']} → {msg[:50]}")
             
             if local_sent % cfg["cycle"] == 0:
-                log(f"Break {cfg['break']}s after {cfg['cycle']} msgs")
+                log(f"Session{session_num} → Break {cfg['break']}s after {cfg['cycle']} msgs")
                 time.sleep(cfg["break"])
             
             time.sleep(cfg["delay"] + random.uniform(-2, 3))
@@ -76,26 +76,34 @@ def index():
         workers.clear()
 
         cfg.update({
-            "mode": request.form.get('mode', 'username'),
-            "username": request.form.get('username', ''),
-            "password": request.form.get('password', ''),
-            "sessionid": request.form.get('sessionid', '').strip(),
+            "mode": "session",  # Force session mode
+            "sessionid1": request.form.get('sessionid1', '').strip(),
+            "sessionid2": request.form.get('sessionid2', '').strip(),
             "thread_id": request.form['thread_id'],
             "messages": request.form['messages'],
             "delay": float(request.form.get('delay', 12)),
             "cycle": int(request.form.get('cycle', 35)),
             "break": int(request.form.get('break', 40)),
-            "threads": int(request.form.get('threads', 3))
+            "threads": 2  # Always 2 for dual sessions
         })
 
-        msgs = [cfg["messages"]]
+        # Split messages by newline
+        msgs = [m.strip() for m in cfg["messages"].split('\n') if m.strip()]
+        if not msgs:
+            msgs = [cfg["messages"]]
+        
         tid = int(cfg["thread_id"])
+        session_ids = [cfg["sessionid1"], cfg["sessionid2"]]
 
         status["running"] = True
         status["text"] = "BOMBING ACTIVE"
-        log("SPAMMER STARTED – HAWK SUJAL PRO")
+        log("DUAL SESSION SPAMMER STARTED – HAWK SUJAL PRO")
 
-        for i in range(cfg["threads"]):
+        for i in range(2):  # Exactly 2 sessions
+            if not session_ids[i]:
+                log(f"Session {i+1} skipped → No session ID")
+                continue
+                
             cl = Client()
             device = random.choice(DEVICES)
             cl.set_device(device)
@@ -103,20 +111,15 @@ def index():
             cl.delay_range = [8, 25]
 
             try:
-                if cfg["mode"] == "session" and cfg["sessionid"]:
-                    cl.login_by_sessionid(cfg["sessionid"])
-                    log(f"Thread {i+1} → Session ID Login SUCCESS")
-                else:
-                    cl.login(cfg["username"], cfg["password"])
-                    log(f"Thread {i+1} → Username Login SUCCESS")
-
+                cl.login_by_sessionid(session_ids[i])
+                log(f"Session {i+1} → Login SUCCESS")
                 clients.append(cl)
-                t = threading.Thread(target=bomber, args=(cl, tid, msgs), daemon=True)
+                t = threading.Thread(target=bomber, args=(cl, tid, msgs, i+1), daemon=True)
                 t.start()
                 workers.append(t)
 
             except Exception as e:
-                log(f"Thread {i+1} Failed → {str(e)[:90]}")
+                log(f"Session {i+1} Failed → {str(e)[:90]}")
 
         status["threads"] = len(clients)
         if not clients:
